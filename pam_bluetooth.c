@@ -60,8 +60,8 @@ PAM_EXTERN int pam_sm_authenticate( pam_handle_t *pamh, int flags,int argc, cons
     }
 
     wait(NULL);
-
-    if (buff[i-2] == 'y' &&
+    if (!endOfPipe){return PAM_IGNORE;}
+    else if (buff[i-2] == 'y' &&
         buff[i-1] == 'e' &&
         buff[i] == 's'){
         return PAM_SUCCESS;
