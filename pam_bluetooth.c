@@ -10,6 +10,7 @@
 #include <fcntl.h>
 
 #define SIZE_BUFF 2048
+#define CONF_PATH "/etc/security/authorized_bluetooth.conf"
 
 PAM_EXTERN int pam_sm_setcred( pam_handle_t *pamh, int flags, int argc, const char **argv ) {
 	return PAM_SUCCESS;
@@ -20,40 +21,50 @@ PAM_EXTERN int pam_sm_acct_mgmt(pam_handle_t *pamh, int flags, int argc, const c
 	return PAM_SUCCESS;
 }
 
-PAM_EXTERN int pam_sm_authenticate( pam_handle_t *pamh, int flags,int argc, const char **argv ){
-    int pipefd[2];
-    char **addrs;
-    int nbmacaddrs = 0;
-
+int parser(char ***addrs){
     // Parse the MAC Addresses
-    const char* path = "/etc/security/authorized_bluetooth.conf";
-    if (access(path, F_OK) != 0)
-        return PAM_IGNORE;
-    int fd = open(path, O_RDONLY);
+    if (access(CONF_PATH, F_OK) != 0)
+        return -1;
+    int nbmacaddrs;
+    int fd = open(CONF_PATH, O_RDONLY);
     char c = '\0';
     int cursor = 0;
     short result = 1;
-    addrs = malloc(sizeof(char*));
-    addrs[0] = malloc(18 * sizeof(char));
-    addrs[0][17] = '\0';
+    *addrs = malloc(sizeof(char*));
+    (*addrs)[0] = malloc(18 * sizeof(char));
+    (*addrs)[0][17] = '\0';
     while (result > 0){
         result = read(fd, &c, sizeof(char));
         if (c == '\n'){
             nbmacaddrs += 1;
-            addrs = realloc(addrs, (nbmacaddrs + 1) * sizeof(char*));
-            addrs[nbmacaddrs] = malloc(18 * sizeof(char));
-            addrs[nbmacaddrs][17] = '\0';
+            *addrs = realloc(*addrs, (nbmacaddrs + 1) * sizeof(char*));
+            (*addrs)[nbmacaddrs] = malloc(18 * sizeof(char));
+            (*addrs)[nbmacaddrs][17] = '\0';
             cursor = 0;
         }
         else{
-            addrs[nbmacaddrs][cursor] = c;
+            (*addrs)[nbmacaddrs][cursor] = c;
             cursor++;
         }
+    }
+    return nbmacaddrs;
+}
+
+PAM_EXTERN int pam_sm_authenticate( pam_handle_t *pamh, int flags,int argc, const char **argv ){
+    int pipefd[2];
+    char **addrs;
+    int nbmacaddrs = parser(&addrs);
+
+    if (nbmacaddrs <= 0){
+        // If no mac addresses have been recognized
+        // return the function
+        return PAM_IGNORE;
     }
 
     int cpid;
     char buff[SIZE_BUFF];
     short endOfPipe = false;
+    int cursor;
 
     for (int i = 0; i < nbmacaddrs; i++){
         // Ensure the MAC Address is correct
